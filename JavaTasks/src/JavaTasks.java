@@ -12,12 +12,15 @@ import java.util.Random;
 public class JavaTasks {
     public static void main(String[] args)
     {
-        // helloWorld(args);
+        //helloWorld(args);
         //task1(args);
         //task2_blockedRing(args);
         //task2_unblockedRing(args);
         //task3(args);
-        task4(args);
+        //task4(args);
+        task5_6(args);
+        //task7(args);
+        //task8(args);
     }
 
     public static void helloWorld(String[] args)
@@ -218,5 +221,530 @@ public class JavaTasks {
         }
 
         MPI.Finalize();
+    }
+
+    // последовательный +
+    // блокирующий: стандартный +, буферизированный B, синхронизированный S, по готовности R
+    // неблокирующий: стандартный +
+    private static void task5_6(String[] args) {
+        MPI.Init(args);
+
+        int rank = MPI.COMM_WORLD.Rank();
+        int size = MPI.COMM_WORLD.Size();
+
+        for (int N : new int[] {20}) {//, 100, 500}) {
+            int[] a = new int[N];
+            int[] b = new int[N];
+            int[] c = new int[N];
+
+            Random rnd = new Random();
+            for (int i = 0; i < N; ++i) {
+                a[i] = 1;
+                b[i] = i;
+
+                // a[i] = rnd.nextInt(9) + 1;
+                // b[i] = rnd.nextInt(9) + 1;
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            // последовательынй
+            if (rank == 0) {
+                long startTime = System.currentTimeMillis();
+
+                for (int i = 0; i < N; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("N = " + N);
+                System.out.println("serial mode: " + time + " ms");
+                System.out.println("array a: " + Arrays.toString(a));
+                System.out.println("array b: " + Arrays.toString(b));
+                System.out.println("array c: " + Arrays.toString(c));
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            // стандартный блокирующий
+            if (rank == 0) {
+                long startTime = System.currentTimeMillis();
+
+                int div = N / size;
+                int mod = N % size;
+
+                int extra_offset = (mod > 0 ? 1 : 0);
+                int count = div + extra_offset;
+
+                for (int i = 0; i < count; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                mod--;
+
+                for (int i = 1; i < size; i++) {
+                    extra_offset += (mod > 0 ? 1 : 0);
+                    int offset = i * div + extra_offset;
+                    count = div + (mod > 0 ? 1 : 0);
+                    mod--;
+
+                    MPI.COMM_WORLD.Send(a, offset, count, MPI.INT, i, 0);
+                    MPI.COMM_WORLD.Send(b, 0, N, MPI.INT, i, 1);
+
+                    MPI.COMM_WORLD.Recv(c, offset, count, MPI.INT, i, 2);
+                }
+
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("standard block mode: " + time + " ms");
+                //System.out.println("array a: " + Arrays.toString(a));
+                //System.out.println("array b: " + Arrays.toString(b));
+                //System.out.println("array c: " + Arrays.toString(c));
+            } else {
+                Status status = MPI.COMM_WORLD.Probe(0, 0);
+                int count = status.Get_count(MPI.INT);
+
+                a = new int[count];
+                b = new int[N];
+
+                MPI.COMM_WORLD.Recv(a, 0, count, MPI.INT, 0, 0);
+                MPI.COMM_WORLD.Recv(b, 0, N, MPI.INT, 0, 1);
+
+                c = new int[count];
+
+                for (int i = 0; i < count; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                MPI.COMM_WORLD.Send(c, 0, count, MPI.INT, 0, 2);
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            // синхронизированный блокирующий
+            if (rank == 0) {
+                long startTime = System.currentTimeMillis();
+
+                int div = N / size;
+                int mod = N % size;
+
+                int extra_offset = (mod > 0 ? 1 : 0);
+                int count = div + extra_offset;
+
+                for (int i = 0; i < count; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                mod--;
+
+                for (int i = 1; i < size; i++) {
+                    extra_offset += (mod > 0 ? 1 : 0);
+                    int offset = i * div + extra_offset;
+                    count = div + (mod > 0 ? 1 : 0);
+                    mod--;
+
+                    MPI.COMM_WORLD.Ssend(a, offset, count, MPI.INT, i, 0);
+                    MPI.COMM_WORLD.Ssend(b, 0, N, MPI.INT, i, 1);
+
+                    MPI.COMM_WORLD.Recv(c, offset, count, MPI.INT, i, 2);
+                }
+
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("synchronized block mode: " + time + " ms");
+                //System.out.println("array a: " + Arrays.toString(a));
+                //System.out.println("array b: " + Arrays.toString(b));
+                //System.out.println("array c: " + Arrays.toString(c));
+            } else {
+                Status status = MPI.COMM_WORLD.Probe(0, 0);
+                int count = status.Get_count(MPI.INT);
+
+                a = new int[count];
+                b = new int[N];
+
+                MPI.COMM_WORLD.Recv(a, 0, count, MPI.INT, 0, 0);
+                MPI.COMM_WORLD.Recv(b, 0, N, MPI.INT, 0, 1);
+
+                c = new int[count];
+
+                for (int i = 0; i < count; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                MPI.COMM_WORLD.Ssend(c, 0, count, MPI.INT, 0, 2);
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            // стандартный неблокирующий
+            if (rank == 0) {
+                long startTime = System.currentTimeMillis();
+
+                int div = N / size;
+                int mod = N % size;
+
+                int extra_offset = (mod > 0 ? 1 : 0);
+                int count = div + extra_offset;
+
+                for (int i = 0; i < count; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                mod--;
+
+                for (int i = 1; i < size; i++) {
+                    extra_offset += (mod > 0 ? 1 : 0);
+                    int offset = i * div + extra_offset;
+                    count = div + (mod > 0 ? 1 : 0);
+                    mod--;
+
+                    MPI.COMM_WORLD.Isend(a, offset, count, MPI.INT, i, 0);
+                    MPI.COMM_WORLD.Isend(b, 0, N, MPI.INT, i, 1);
+
+                    MPI.COMM_WORLD.Irecv(c, offset, count, MPI.INT, i, 2).Wait();
+                }
+
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("standard unblock mode: " + time + " ms");
+                //System.out.println("array a: " + Arrays.toString(a));
+                //System.out.println("array b: " + Arrays.toString(b));
+                //System.out.println("array c: " + Arrays.toString(c));
+            } else {
+                Status status = MPI.COMM_WORLD.Probe(0, 0);
+                int count = status.Get_count(MPI.INT);
+
+                a = new int[count];
+                b = new int[N];
+
+                MPI.COMM_WORLD.Irecv(a, 0, count, MPI.INT, 0, 0).Wait();
+                MPI.COMM_WORLD.Irecv(b, 0, N, MPI.INT, 0, 1).Wait();
+
+                c = new int[count];
+
+                for (int i = 0; i < count; i++) {
+                    c[i] = 0;
+                    for (int j = 0; j < N; j++)
+                        c[i] += a[i] * b[j];
+                }
+
+                MPI.COMM_WORLD.Isend(c, 0, count, MPI.INT, 0, 2);
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            a = new int[N];
+            b = new int[N];
+            c = new int[N];
+
+            for (int i = 0; i < N; ++i) {
+                a[i] = 1;
+                b[i] = i;
+
+                // a[i] = rnd.nextInt(9) + 1;
+                // b[i] = rnd.nextInt(9) + 1;
+            }
+
+            // коллективные операции: scatterv
+            long startTime = 0;
+
+            if (rank == 0)
+                startTime = System.currentTimeMillis();
+
+            int div = N / size;
+            int mod = N % size;
+
+            int[] sendcount = new int[size];
+            int[] displs = new int[size];
+
+            sendcount[0] = div + (mod > 0 ? 1 : 0);
+            displs[0] = 0;
+            int extra_offset = (mod > 0 ? 1 : 0);
+            mod--;
+
+            for (int i = 1; i < size; i++) {
+                extra_offset += (mod > 0 ? 1 : 0);
+                sendcount[i] = div + (mod > 0 ? 1 : 0);
+                displs[i] = i * div + extra_offset;
+                mod--;
+            }
+
+            mod = N % size;
+
+            int count = div + (rank < mod ? 1 : 0);
+            int[] buf_a = new int[count];
+
+            MPI.COMM_WORLD.Scatterv(
+                    a, 0, sendcount, displs, MPI.INT,
+                    buf_a, 0, count, MPI.INT, 0);
+
+            if (rank == 0) {
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("scatterv: " + time + " ms");
+//                System.out.println("array a: " + Arrays.toString(a));
+//                System.out.println("array b: " + Arrays.toString(b));
+//                System.out.println("array c: " + Arrays.toString(c));
+            }
+
+            // коллективные операции: bcast
+            int[] buf_b;
+            if (rank == 0)
+                buf_b = b.clone();
+            else
+                buf_b = new int[N];
+
+            MPI.COMM_WORLD.Bcast(buf_b, 0, N, MPI.INT, 0);
+
+            c = new int[count];
+            for (int i = 0; i < count; i++) {
+                c[i] = 0;
+                for (int j = 0; j < N; j++)
+                    c[i] += a[i] * b[j];
+            }
+
+            if (rank == 0) {
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("bcast: " + time + " ms");
+            }
+
+            // коллективные операции: gatherv
+            int[] buf_c = new int[N];
+            int[] recvcount = sendcount.clone();
+
+            MPI.COMM_WORLD.Gatherv(
+                    c, 0, count, MPI.INT,
+                    buf_c, 0, recvcount, displs, MPI.INT, 0);
+
+            if (rank == 0) {
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("gatherv: " + time + " ms");
+                //System.out.println("array a: " + Arrays.toString(a));
+                //System.out.println("array b: " + Arrays.toString(b));
+                //System.out.println("array c: " + Arrays.toString(buf_c));
+            }
+
+            //System.out.println("array c: " + Arrays.toString(c));
+        }
+    }
+
+    private static void task7(String[] args) {
+        MPI.Init(args);
+
+        int rank = MPI.COMM_WORLD.Rank();
+        int size = MPI.COMM_WORLD.Size();
+
+        int N = 5;
+        int[][] graph = new int[N][N];
+        int[] degree = new int[N];
+
+        Random rnd = new Random();
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                graph[i][j] = rnd.nextInt(2);
+            }
+        }
+
+        MPI.COMM_WORLD.Barrier();
+
+        if (rank == 0) {
+            for (int i = 0; i < N; i++) {
+                for (int j = 0; j < N; j++)
+                    continue;
+                System.out.println("graph [" + i + "]: " + Arrays.toString(graph[i]));
+            }
+        }
+
+        MPI.COMM_WORLD.Barrier();
+
+        if (rank == 0) {
+            long startTime = System.currentTimeMillis();
+
+            for (int i = 0; i < N; i++) {
+                degree[i] = 0;
+                for (int j = 0; j < N; j++) {
+                    if (graph[i][j] == 1)
+                        degree[i] += 1;
+                }
+            }
+
+            int max = degree[0];
+            for (int i = 1; i < N; i++)
+                if (degree[i] > max)
+                    max = degree[i];
+
+            long endTime = System.currentTimeMillis();
+            long time = endTime - startTime;
+
+            System.out.println("max degree: " + max);
+            System.out.println("degree: " + Arrays.toString(degree));
+            System.out.println("serial mode: " + time + " ms");
+        }
+
+        MPI.COMM_WORLD.Barrier();
+
+        if (rank == 0) {
+            Arrays.fill(degree, 0);
+            long startTime = System.currentTimeMillis();
+
+            degree[0] = 0;
+            for (int j = 0; j < N; j++)
+                if (graph[0][j] == 1)
+                    degree[0] += 1;
+
+            for (int i = 1; i < N; i++) {
+                MPI.COMM_WORLD.Isend(graph[i], 0, N, MPI.INT, i, 0);
+                MPI.COMM_WORLD.Irecv(degree, i, 1, MPI.INT, i, 1).Wait();
+            }
+
+            int max = degree[0];
+            for (int i = 1; i < N; i++)
+                if (degree[i] > max)
+                    max = degree[i];
+
+            long endTime = System.currentTimeMillis();
+            long time = endTime - startTime;
+
+            System.out.println("max degree: " + max);
+            System.out.println("degree: " + Arrays.toString(degree));
+            System.out.println("standard unblock mode: " + time + " ms");
+        }
+        else {
+            int[] graph_i = new int[N];
+            MPI.COMM_WORLD.Irecv(graph_i, 0, N, MPI.INT, 0, 0).Wait();
+
+            int[] degree_i = new int[1];
+            degree[0] = 0;
+            for (int j = 0; j < N; j++)
+                if (graph_i[j] == 1)
+                    degree_i[0] += 1;
+
+            MPI.COMM_WORLD.Isend(degree_i, 0, 1, MPI.INT, 0, 1);
+        }
+    }
+
+    private static void task8(String[] args) {
+        MPI.Init(args);
+
+        int rank = MPI.COMM_WORLD.Rank();
+        int size = MPI.COMM_WORLD.Size();
+
+        for (int N : new int[] {2}) {//, 3, 3, 10, 100, 500}) {
+            System.out.println("+" + rank);
+            int[][] graph = new int[N][N];
+            int[] degree = new int[N];
+
+            Random rnd = new Random();
+            for (int i = 0; i < N; i++) {
+                for (int j = 0; j < N; j++) {
+                    graph[i][j] = rnd.nextInt(2);
+                }
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            if (rank == 0) {
+                for (int i = 0; i < N; i++) {
+                    for (int j = 0; j < N; j++)
+                        continue;
+                    System.out.println("graph [" + i + "]: " + Arrays.toString(graph[i]));
+                }
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            if (rank == 0) {
+                long startTime = System.currentTimeMillis();
+
+                for (int i = 0; i < N; i++) {
+                    degree[i] = 0;
+                    for (int j = 0; j < N; j++) {
+                        if (graph[i][j] == 1)
+                            degree[i] += 1;
+                    }
+                }
+
+                boolean f = true;
+                for (int i = 0; i < N - 1; i++)
+                    if (degree[i] != degree[i + 1]) {
+                        f = false;
+                        break;
+                    }
+
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("N = " + N);
+                System.out.println("regular: " + (f ? " yes" : "no"));
+                System.out.println("degree: " + Arrays.toString(degree));
+                System.out.println("serial mode: " + time + " ms");
+            }
+
+            MPI.COMM_WORLD.Barrier();
+
+            if (rank == 0) {
+                Arrays.fill(degree, 0);
+                long startTime = System.currentTimeMillis();
+
+                degree[0] = 0;
+                for (int j = 0; j < N; j++)
+                    if (graph[0][j] == 1)
+                        degree[0] += 1;
+
+                for (int i = 1; i < N; i++) {
+                    MPI.COMM_WORLD.Isend(graph[i], 0, N, MPI.INT, i, 0);
+                    MPI.COMM_WORLD.Irecv(degree, i, 1, MPI.INT, i, 1).Wait();
+                }
+
+                boolean f = true;
+                for (int i = 0; i < N - 1; i++)
+                    if (degree[i] != degree[i + 1]) {
+                        f = false;
+                        break;
+                    }
+
+                long endTime = System.currentTimeMillis();
+                long time = endTime - startTime;
+
+                System.out.println("regular: " + (f ? " yes" : "no"));
+                System.out.println("degree: " + Arrays.toString(degree));
+                System.out.println("standard unblock mode: " + time + " ms");
+            } else {
+                int[] graph_i = new int[N];
+                MPI.COMM_WORLD.Irecv(graph_i, 0, N, MPI.INT, 0, 0).Wait();
+
+                int[] degree_i = new int[1];
+                degree[0] = 0;
+                for (int j = 0; j < N; j++)
+                    if (graph_i[j] == 1)
+                        degree_i[0] += 1;
+
+                MPI.COMM_WORLD.Isend(degree_i, 0, 1, MPI.INT, 0, 1);
+            }
+
+            MPI.COMM_WORLD.Barrier();
+        }
     }
 }
