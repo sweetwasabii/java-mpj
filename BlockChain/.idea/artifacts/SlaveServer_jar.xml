@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="SlaveServer:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/SlaveServer_jar</output-path>
+    <root id="archive" name="SlaveServer.jar">
+      <element id="module-output" name="BlockChain" />
+      <element id="extracted-dir" path="D:/gson-2.6.2.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
